@@ -5,32 +5,29 @@ import { Client } from "@opensearch-project/opensearch";
 import { default as esb } from "elastic-builder";
 
 const scrollTime = "1m";
+const srcIndex = "ipfs_files";
+const dstIndex = " ipfs_links";
+const batchSize = 10;
 const year = 2019;
-const index = "ipfs_files";
-const batchSize = 100;
 
-const requestBody = new esb.RequestBodySearch()
-	.query(
-		new esb.BoolQuery()
-			.filter(
-				new esb.RangeQuery("first-seen")
-					.gte(year)
-					.lt(year + 1)
-					.format("yyyy")
-			)
-			.filter(new esb.ExistsQuery("references"))
-	)
-	.size(batchSize)
-	.sort(new esb.Sort("_doc"))
-	.source("references");
+async function* getHits(client: Client, year: number) {
+	const requestBody = new esb.RequestBodySearch()
+		.query(
+			new esb.BoolQuery()
+				.filter(
+					new esb.RangeQuery("first-seen")
+						.gte(year)
+						.lt(year + 1)
+						.format("yyyy")
+				)
+				.filter(new esb.ExistsQuery("references"))
+		)
+		.size(batchSize)
+		.sort(new esb.Sort("_doc"))
+		.source("references");
 
-const client = new Client({
-	node: "http://localhost:9200",
-});
-
-async function* getDocuments(client: Client, year: Number) {
 	var response = await client.search({
-		index: index,
+		index: srcIndex,
 		body: requestBody.toJSON(),
 		scroll: scrollTime,
 	});
@@ -41,18 +38,18 @@ async function* getDocuments(client: Client, year: Number) {
 		yield hit;
 	}
 
-	while (response.body.hits.hits.length > 0) {
-		response = await client.scroll({
-			body: {
-				scroll: scrollTime,
-				scroll_id: response.body._scroll_id,
-			},
-		});
+	// while (response.body.hits.hits.length > 0) {
+	// 	response = await client.scroll({
+	// 		body: {
+	// 			scroll: scrollTime,
+	// 			scroll_id: response.body._scroll_id,
+	// 		},
+	// 	});
 
-		for (const hit of response.body.hits.hits) {
-			yield hit;
-		}
-	}
+	// 	for (const hit of response.body.hits.hits) {
+	// 		yield hit;
+	// 	}
+	// }
 }
 
 function base64RemovePadding(str: string): string {
@@ -69,31 +66,42 @@ function homogeniseCID(cid: string): string {
 	return CID.parse(cid).toV1().toString();
 }
 
-async function* getLinks(documents: AsyncGenerator) {
-	for await (const doc of getDocuments(client, year)) {
+async function* getLinks(documents: AsyncGenerator<any, void, unknown>) {
+	for await (const doc of documents) {
 		const to = homogeniseCID(doc._id);
 
 		for (const ref of doc._source.references) {
-			const from = homogeniseCID(ref.parent_hash),
-				name = ref.name;
-
 			yield {
-				_id: hashId(`ipfs://${from}-ipfs://${to}-${name}`),
-				_source: {
-					from: from,
-					to: to,
-					name: name,
-				},
+				from: homogeniseCID(ref.parent_hash),
+				to: to,
+				name: ref.name,
 			};
 		}
 	}
 }
 
 async function main() {
-	const docs = getDocuments(client, year);
-	for await (const link of getLinks(docs)) {
-		console.log(link);
-	}
+	const client = new Client({
+		node: "http://localhost:9200",
+	});
+
+	const docs = getHits(client, year);
+
+	const result = await client.helpers.bulk({
+		datasource: getLinks(docs),
+		onDocument(doc) {
+			return {
+				index: {
+					_index: dstIndex,
+					_id: hashId(`ipfs://${doc.from}-ipfs://${doc.to}-${doc.name}`),
+				},
+			};
+		},
+		onDrop(doc) {
+			console.error("Error indexing", doc);
+		},
+	});
+	console.log(result);
 }
 
 main();
