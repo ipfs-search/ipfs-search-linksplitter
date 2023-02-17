@@ -6,7 +6,7 @@ import { default as esb } from "elastic-builder";
 
 const scrollTime = "1m";
 const srcIndex = "ipfs_files";
-const dstIndex = " ipfs_links";
+const dstIndex = "ipfs_links";
 const batchSize = 10;
 const year = 2019;
 
@@ -24,7 +24,7 @@ async function* getHits(client: Client, year: number) {
 		)
 		.size(batchSize)
 		.sort(new esb.Sort("_doc"))
-		.source("references");
+		.source(["references", "last-seen"]);
 
 	var response = await client.search({
 		index: srcIndex,
@@ -69,12 +69,14 @@ function homogeniseCID(cid: string): string {
 async function* getLinks(documents: AsyncGenerator<any, void, unknown>) {
 	for await (const doc of documents) {
 		const to = homogeniseCID(doc._id);
+		const last_seen = doc._source["last-seen"];
 
 		for (const ref of doc._source.references) {
 			yield {
 				from: homogeniseCID(ref.parent_hash),
 				to: to,
 				name: ref.name,
+				seen: last_seen,
 			};
 		}
 	}
@@ -89,6 +91,7 @@ async function main() {
 
 	const result = await client.helpers.bulk({
 		datasource: getLinks(docs),
+		require_alias: true,
 		onDocument(doc) {
 			return {
 				index: {
