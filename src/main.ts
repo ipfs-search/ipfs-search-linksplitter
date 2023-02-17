@@ -1,3 +1,5 @@
+import { default as crypto } from "crypto";
+
 import { Client } from "@opensearch-project/opensearch";
 import { default as esb, script } from "elastic-builder";
 
@@ -28,13 +30,11 @@ async function* getDocuments(client: Client, year: Number) {
 		scroll: "1m",
 	});
 
-	console.log(response.body);
-
 	console.info(`Query returned ${response.body.hits.total.value} results.`);
 
-	yield await response.body.hits.hits;
-
-	// console.debug(response.body._scroll_id);
+	for (const hit of response.body.hits.hits) {
+		yield hit;
+	}
 
 	while (response.body.hits.hits.length > 0) {
 		response = await client.scroll({
@@ -44,13 +44,46 @@ async function* getDocuments(client: Client, year: Number) {
 			},
 		});
 
-		yield await response.body.hits.hits;
+		for (const hit of response.body.hits.hits) {
+			yield hit;
+		}
+	}
+}
+
+function base64RemovePadding(str: string): string {
+	return str.replace(/={1,2}$/, "");
+}
+
+function hashId(input: string): string {
+	return base64RemovePadding(
+		crypto.createHash("sha1").update(input).digest("base64")
+	);
+}
+
+async function* getLinks(documents: AsyncGenerator) {
+	for await (const doc of getDocuments(client, year)) {
+		const to = doc._id;
+
+		for (const ref of doc._source.references) {
+			const from = ref.parent_hash,
+				name = ref.name;
+
+			yield {
+				_id: hashId(`ipfs://${from}-ipfs://${to}-${name}`),
+				_source: {
+					from: from,
+					to: to,
+					name: name,
+				},
+			};
+		}
 	}
 }
 
 async function main() {
-	for await (const doc of getDocuments(client, year)) {
-		console.log(doc);
+	const docs = getDocuments(client, year);
+	for await (const link of getLinks(docs)) {
+		console.log(link);
 	}
 }
 
