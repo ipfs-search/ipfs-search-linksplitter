@@ -8,7 +8,7 @@ const scrollTime = "1m";
 const srcIndex = "ipfs_files";
 const dstIndex = "ipfs_links";
 const batchSize = 100;
-const year = 2019;
+const years = [2016, 2017, 2018, 2020, 2021, 2022, 2023];
 
 async function* getHits(client: Client, year: number) {
 	const requestBody = new esb.RequestBodySearch()
@@ -50,6 +50,13 @@ async function* getHits(client: Client, year: number) {
 			yield hit;
 		}
 	}
+
+	// Delete scroll
+	await client.clear_scroll({
+		body: {
+			scroll_id: response.body._scroll_id,
+		},
+	});
 }
 
 function base64RemovePadding(str: string): string {
@@ -66,30 +73,56 @@ function homogeniseCID(cid: string): string {
 	return CID.parse(cid).toV1().toString();
 }
 
+function removeMillis(input: string): string {
+	const date = new Date(input);
+	date.setMilliseconds(0);
+
+	return date.toISOString();
+}
+
+function getSeen(doc): string {
+	const fields = ["last-seen", "first-seen"];
+
+	for (const f of fields) {
+		if (doc._source[f]) return removeMillis(doc._source[f]);
+	}
+
+	return null;
+}
+
 async function* getLinks(documents: AsyncGenerator<any, void, unknown>) {
+	var docCnt = 0,
+		refCnt = 0;
+
 	for await (const doc of documents) {
 		const to = homogeniseCID(doc._id);
-		const last_seen = doc._source["last-seen"];
+		const seen = getSeen(doc);
 
 		for (const ref of doc._source.references) {
 			yield {
 				from: homogeniseCID(ref.parent_hash),
 				to: to,
 				name: ref.name,
-				seen: last_seen,
+				seen: seen,
 			};
+
+			refCnt++;
+			if (refCnt % 1000 === 0) {
+				console.log(`${refCnt} references processed`);
+			}
+		}
+
+		docCnt++;
+		if (docCnt % 1000 === 0) {
+			console.log(`${docCnt} documents processed`);
 		}
 	}
 }
 
-async function main() {
-	const client = new Client({
-		node: "http://localhost:9200",
-	});
-
+async function processYear(client: Client, year: number) {
 	const docs = getHits(client, year);
 
-	const result = await client.helpers.bulk({
+	return client.helpers.bulk({
 		datasource: getLinks(docs),
 		require_alias: true,
 		onDocument(doc) {
@@ -104,7 +137,18 @@ async function main() {
 			console.error("Error indexing", doc);
 		},
 	});
-	console.log(result);
+}
+
+async function main() {
+	const client = new Client({
+		node: "http://localhost:9200",
+	});
+
+	for (const year of years) {
+		console.log(`Processing year ${year}`);
+		const result = await processYear(client, year);
+		console.log(`Processed year ${year}, result:`, result);
+	}
 }
 
 main();
