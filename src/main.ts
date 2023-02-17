@@ -7,7 +7,7 @@ import { default as esb } from "elastic-builder";
 const scrollTime = "1m";
 const srcIndex = "ipfs_files";
 const dstIndex = "ipfs_links";
-const batchSize = 10;
+const batchSize = 100;
 const year = 2019;
 
 async function* getHits(client: Client, year: number) {
