@@ -38,18 +38,18 @@ async function* getHits(client: Client, year: number) {
 		yield hit;
 	}
 
-	// while (response.body.hits.hits.length > 0) {
-	// 	response = await client.scroll({
-	// 		body: {
-	// 			scroll: scrollTime,
-	// 			scroll_id: response.body._scroll_id,
-	// 		},
-	// 	});
+	while (response.body.hits.hits.length > 0) {
+		response = await client.scroll({
+			body: {
+				scroll: scrollTime,
+				scroll_id: response.body._scroll_id,
+			},
+		});
 
-	// 	for (const hit of response.body.hits.hits) {
-	// 		yield hit;
-	// 	}
-	// }
+		for (const hit of response.body.hits.hits) {
+			yield hit;
+		}
+	}
 }
 
 function base64RemovePadding(str: string): string {
