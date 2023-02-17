@@ -88,8 +88,8 @@ function getSeen(doc): string {
 }
 
 async function* getLinks(documents: AsyncGenerator<any, void, unknown>) {
-	var docCnt = 0,
-		refCnt = 0;
+	var docCnt = 0;
+	// refCnt = 0;
 
 	for await (const doc of documents) {
 		const to = homogeniseCID(doc._id);
@@ -103,10 +103,10 @@ async function* getLinks(documents: AsyncGenerator<any, void, unknown>) {
 				seen: seen,
 			};
 
-			refCnt++;
-			if (refCnt % 1000 === 0) {
-				console.log(`${refCnt} references processed`);
-			}
+			// refCnt++;
+			// if (refCnt % 1000 === 0) {
+			// 	console.log(`${refCnt} references processed`);
+			// }
 		}
 
 		docCnt++;
