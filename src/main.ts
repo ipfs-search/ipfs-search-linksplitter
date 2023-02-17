@@ -74,10 +74,7 @@ function homogeniseCID(cid: string): string {
 }
 
 function removeMillis(input: string): string {
-	const date = new Date(input);
-	date.setMilliseconds(0);
-
-	return date.toISOString();
+	return input.substring(0, 19) + "Z";
 }
 
 function getSeen(doc): string {
