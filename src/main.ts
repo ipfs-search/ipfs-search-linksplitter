@@ -9,7 +9,7 @@ const scrollTime = "1m";
 const srcIndex = "ipfs_files";
 const dstIndex = "ipfs_links";
 const batchSize = 100;
-const years = [2018, 2020, 2021, 2022, 2023];
+const years = [2019, 2020, 2021, 2022, 2023];
 const months = [...Array(12).keys()].map((i) => i + 1);
 
 function getEnd(year: number, month: number): string {
