@@ -1,7 +1,8 @@
 {
+  "extends": "@tsconfig/node16-strictest-esm/tsconfig.json",
   "compilerOptions": {
     "rootDir": "./src",
     "outDir": "./dist",
-    "module": "nodenext"
+    "esModuleInterop": true
   }
 }

@@ -6,7 +6,7 @@ import { pipeline } from "node:stream/promises";
 const batchSize = 1000;
 const scrollTime = "1m";
 const index = "ipfs_links";
-const maxElems = 1000;
+const maxElems = 100000;
 
 const client = new Client({
 	node: "http://localhost:9200",

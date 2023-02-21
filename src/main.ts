@@ -8,55 +8,55 @@ const scrollTime = "1m";
 const srcIndex = "ipfs_files";
 const dstIndex = "ipfs_links";
 const batchSize = 100;
-const years = [2016, 2017, 2018, 2020, 2021, 2022, 2023];
+const years = [2018, 2020, 2021, 2022, 2023];
+const months = [...Array(12).keys()].map((i) => i + 1);
 
-async function* getHits(client: Client, year: number) {
-	const requestBody = new esb.RequestBodySearch()
+function getEnd(year: number, month: number): string {
+	if (month == 12) {
+		return `${year + 1}-1`;
+	}
+
+	return `${year}-${month + 1}`;
+}
+
+function getRequestBody(year: number, month: number): esb.RequestBodySearch {
+	const start = `${year}-${month}`;
+	const end = getEnd(year, month);
+
+	return new esb.RequestBodySearch()
 		.query(
 			new esb.BoolQuery()
 				.filter(
-					new esb.RangeQuery("first-seen")
-						.gte(year)
-						.lt(year + 1)
-						.format("yyyy")
+					new esb.RangeQuery("first-seen").gte(start).lt(end).format("yyyy-M")
 				)
 				.filter(new esb.ExistsQuery("references"))
 		)
 		.size(batchSize)
 		.sort(new esb.Sort("_doc"))
 		.source(["references", "last-seen"]);
+}
 
-	var response = await client.search({
+async function* getHits(client: Client, year: number, month: number) {
+	const requestBody = getRequestBody(year, month);
+	const search = client.helpers.scrollSearch({
 		index: srcIndex,
 		body: requestBody.toJSON(),
 		scroll: scrollTime,
 	});
 
-	console.info(`Query returned ${response.body.hits.total.value} results.`);
+	var first = true;
+	for await (const result of search) {
+		if (first) {
+			console.info(
+				`Query returned ${result.body["hits"].total.value} results.`
+			);
+			first = false;
+		}
 
-	for (const hit of response.body.hits.hits) {
-		yield hit;
-	}
-
-	while (response.body.hits.hits.length > 0) {
-		response = await client.scroll({
-			body: {
-				scroll: scrollTime,
-				scroll_id: response.body._scroll_id,
-			},
-		});
-
-		for (const hit of response.body.hits.hits) {
+		for (const hit of result.body["hits"].hits) {
 			yield hit;
 		}
 	}
-
-	// Delete scroll
-	await client.clear_scroll({
-		body: {
-			scroll_id: response.body._scroll_id,
-		},
-	});
 }
 
 function base64RemovePadding(str: string): string {
@@ -77,7 +77,7 @@ function removeMillis(input: string): string {
 	return input.substring(0, 19) + "Z";
 }
 
-function getSeen(doc): string {
+function getSeen(doc: any): string | null {
 	const fields = ["last-seen", "first-seen"];
 
 	for (const f of fields) {
@@ -87,9 +87,8 @@ function getSeen(doc): string {
 	return null;
 }
 
-async function* getLinks(documents: AsyncGenerator<any, void, unknown>) {
+async function* getLinks(documents: AsyncIterable<any>) {
 	var docCnt = 0;
-	// refCnt = 0;
 
 	for await (const doc of documents) {
 		const to = homogeniseCID(doc._id);
@@ -102,11 +101,6 @@ async function* getLinks(documents: AsyncGenerator<any, void, unknown>) {
 				name: ref.name,
 				seen: seen,
 			};
-
-			// refCnt++;
-			// if (refCnt % 1000 === 0) {
-			// 	console.log(`${refCnt} references processed`);
-			// }
 		}
 
 		docCnt++;
@@ -116,8 +110,8 @@ async function* getLinks(documents: AsyncGenerator<any, void, unknown>) {
 	}
 }
 
-async function processYear(client: Client, year: number) {
-	const docs = getHits(client, year);
+async function processYearMonth(client: Client, year: number, month: number) {
+	const docs = getHits(client, year, month);
 
 	return client.helpers.bulk({
 		datasource: getLinks(docs),
@@ -142,9 +136,11 @@ async function main() {
 	});
 
 	for (const year of years) {
-		console.log(`Processing year ${year}`);
-		const result = await processYear(client, year);
-		console.log(`Processed year ${year}, result:`, result);
+		for (const month of months) {
+			console.log(`Processing month ${year}-${month}`);
+			const result = await processYearMonth(client, year, month);
+			console.log(`Processed ${year}-${month}, result:`, result);
+		}
 	}
 }
 
