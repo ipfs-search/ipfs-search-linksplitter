@@ -34,7 +34,7 @@ function getRequestBody(year: number, month: number): esb.RequestBodySearch {
 		)
 		.size(batchSize)
 		.sort(new esb.Sort("_doc"))
-		.source(["references", "last-seen"]);
+		.source(["references", "first-seen", "last-seen"]);
 }
 
 async function* getHits(client: Client, year: number, month: number) {
