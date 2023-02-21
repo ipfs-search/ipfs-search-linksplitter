@@ -116,6 +116,8 @@ async function processYearMonth(client: Client, year: number, month: number) {
 	return client.helpers.bulk({
 		datasource: getLinks(docs),
 		require_alias: true,
+		flushBytes: 50 * 1024 * 1024, // 50MB size
+		flushInterval: 60 * 1000, // 60s
 		onDocument(doc) {
 			return {
 				index: {
