@@ -3,6 +3,7 @@ import { default as crypto } from "crypto";
 
 import { Client } from "@opensearch-project/opensearch";
 import { default as esb } from "elastic-builder";
+import { default as ProgressBar } from "progress";
 
 const scrollTime = "1m";
 const srcIndex = "ipfs_files";
@@ -44,17 +45,23 @@ async function* getHits(client: Client, year: number, month: number) {
 		scroll: scrollTime,
 	});
 
-	var first = true;
+	var bar: ProgressBar | null = null;
 	for await (const result of search) {
-		if (first) {
+		if (!bar) {
 			console.info(
 				`Query returned ${result.body["hits"].total.value} results.`
 			);
-			first = false;
+			bar = new ProgressBar(
+				"(:rate/s) [:bar] :percent (:current/:total) ETA: :etas Elapsed: :elapsedss",
+				{
+					total: result.body["hits"].total.value,
+				}
+			);
 		}
 
 		for (const hit of result.body["hits"].hits) {
 			yield hit;
+			bar.tick();
 		}
 	}
 }
@@ -88,8 +95,6 @@ function getSeen(doc: any): string | null {
 }
 
 async function* getLinks(documents: AsyncIterable<any>) {
-	var docCnt = 0;
-
 	for await (const doc of documents) {
 		const to = homogeniseCID(doc._id);
 		const seen = getSeen(doc);
@@ -101,11 +106,6 @@ async function* getLinks(documents: AsyncIterable<any>) {
 				name: ref.name,
 				seen: seen,
 			};
-		}
-
-		docCnt++;
-		if (docCnt % 1000 === 0) {
-			console.log(`${docCnt} documents processed`);
 		}
 	}
 }
