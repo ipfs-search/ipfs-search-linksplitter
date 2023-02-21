@@ -133,6 +133,9 @@ async function processYearMonth(client: Client, year: number, month: number) {
 async function main() {
 	const client = new Client({
 		node: "http://localhost:9200",
+		sniffOnConnectionFault: true,
+		sniffOnStart: true,
+		sniffInterval: 300,
 	});
 
 	for (const year of years) {
